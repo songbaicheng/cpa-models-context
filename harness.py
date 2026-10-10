@@ -9,7 +9,11 @@ import base64
 import ctypes
 import json
 import argparse
+import sys
 from pathlib import Path
+
+if not __debug__:
+    raise SystemExit("This test requires Python assertions; run without -O/-OO or PYTHONOPTIMIZE.")
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("library", type=Path, help="Path to the built Linux shared library")
@@ -112,7 +116,7 @@ assert rc == 0 and env["ok"]
 meta = env["result"]["metadata"]
 for field in ("Name", "Version", "Author", "GitHubRepository"):
     assert str(meta.get(field) or "").strip()
-assert meta["Version"] == "1.1.0"
+assert meta["Version"] == "1.1.1"
 assert env["result"]["capabilities"] == {"response_interceptor": True}
 assert env["result"]["context_lengths_loaded"] == 2
 models = json.loads((Path(__file__).parent / "testdata" / "models.json").read_text())

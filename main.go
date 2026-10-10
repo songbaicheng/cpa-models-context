@@ -60,7 +60,7 @@ const (
 	// Installation/discovery and reload behavior depend on the host version.
 	// Publish changed binaries under a new version and follow the host's
 	// documented upgrade procedure; do not rely on replacing a loaded file.
-	pluginVersion = "1.1.0"
+	pluginVersion = "1.1.1"
 )
 
 // ── JSON envelope shared with the host ──────────────────────────────────────
@@ -517,24 +517,50 @@ func indexKey(line, key string) int {
 	return -1
 }
 
-// splitMappingEntry parses `name: 123`, `"name:with:colons": 123` and
-// `name: "123"` into its parts.
+// splitMappingEntry finds the delimiter outside a quoted key, then removes
+// exactly one scalar quoting layer. Literal quotes are part of the model ID.
 func splitMappingEntry(entry string) (string, int, bool) {
-	colon := strings.LastIndex(entry, ": ")
-	if colon < 0 {
+	entry = strings.TrimSpace(entry)
+	if entry == "" || strings.HasPrefix(entry, "#") {
 		return "", 0, false
 	}
-	name := strings.TrimSpace(entry[:colon])
-	name = strings.Trim(name, `"'`)
-	if strings.TrimSpace(name) == "" || strings.HasPrefix(entry, "#") {
+	colon := -1
+	if entry[0] == '\'' || entry[0] == '"' {
+		end := quotedScalarEnd(entry)
+		if end < 0 {
+			return "", 0, false
+		}
+		colon = end
+		for colon < len(entry) && (entry[colon] == ' ' || entry[colon] == '	') {
+			colon++
+		}
+		if colon >= len(entry) || entry[colon] != ':' {
+			return "", 0, false
+		}
+	} else {
+		for i := 0; i+1 < len(entry); i++ {
+			if entry[i] == ':' && (entry[i+1] == ' ' || entry[i+1] == '	') {
+				colon = i
+				break
+			}
+		}
+	}
+	if colon < 0 || colon+1 >= len(entry) || (entry[colon+1] != ' ' && entry[colon+1] != '	') {
 		return "", 0, false
 	}
-	value := strings.TrimSpace(entry[colon+2:])
-	// Drop trailing YAML comments before unquoting scalar integers.
+	name, ok := unquoteConfigScalar(strings.TrimSpace(entry[:colon]))
+	if !ok || strings.TrimSpace(name) == "" {
+		return "", 0, false
+	}
+	value := strings.TrimSpace(entry[colon+1:])
+	// Scalar integers cannot contain a comment marker inside their quotes.
 	if hash := strings.Index(value, " #"); hash >= 0 {
 		value = strings.TrimSpace(value[:hash])
 	}
-	value = strings.Trim(value, `"'`)
+	value, ok = unquoteConfigScalar(value)
+	if !ok {
+		return "", 0, false
+	}
 	n, err := strconv.Atoi(value)
 	if err != nil || n <= 0 {
 		return "", 0, false
@@ -542,9 +568,68 @@ func splitMappingEntry(entry string) (string, int, bool) {
 	return name, n, true
 }
 
+// quotedScalarEnd returns the index immediately after the closing quote.
+func quotedScalarEnd(value string) int {
+	quote := value[0]
+	for i := 1; i < len(value); i++ {
+		if quote == '"' && value[i] == '\\' {
+			i++
+			continue
+		}
+		if value[i] == quote {
+			if quote == '\'' && i+1 < len(value) && value[i+1] == '\'' {
+				i++
+				continue
+			}
+			return i + 1
+		}
+	}
+	return -1
+}
+
+// unquoteConfigScalar supports YAML single-quote doubling and the subset of
+// YAML double-quote escapes understood by strconv.Unquote. Reject other escapes
+// (including Go octal and non-ASCII \xHH escapes) rather than silently changing
+// an exact ID.
+func unquoteConfigScalar(value string) (string, bool) {
+	if value == "" || (value[0] != '\'' && value[0] != '"') {
+		return value, true
+	}
+	if quotedScalarEnd(value) != len(value) {
+		return "", false
+	}
+	if value[0] == '\'' {
+		return strings.ReplaceAll(value[1:len(value)-1], "''", "'"), true
+	}
+	for i := 1; i < len(value)-1; i++ {
+		if value[i] == '\\' {
+			i++
+			if i >= len(value)-1 || !strings.ContainsRune(`abfnrtv\\"xuU`, rune(value[i])) {
+				return "", false
+			}
+			if value[i] == 'x' {
+				// Go decodes \xHH as a byte; YAML treats it as a Unicode
+				// code point. Only ASCII has identical semantics.
+				if i+2 >= len(value)-1 {
+					return "", false
+				}
+				n, err := strconv.ParseUint(value[i+1:i+3], 16, 8)
+				if err != nil || n > 0x7f {
+					return "", false
+				}
+			}
+		}
+	}
+	decoded, err := strconv.Unquote(value)
+	return decoded, err == nil
+}
+
 func mergeInlineJSON(value string, out map[string]int) {
 	value = strings.TrimSpace(value)
-	value = strings.Trim(value, `"'`)
+	value, ok := unquoteConfigScalar(value)
+	if !ok {
+		return
+	}
 	if !strings.HasPrefix(value, "{") {
 		return
 	}
@@ -555,7 +640,7 @@ func mergeInlineJSON(value string, out map[string]int) {
 		return
 	}
 	for k, v := range m {
-		if n, ok := toInt(v); ok && n > 0 {
+		if n, ok := toInt(v); ok && n > 0 && strings.TrimSpace(k) != "" {
 			out[k] = n
 		}
 	}

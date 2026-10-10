@@ -19,4 +19,5 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: sh build.sh
-      - run: python3 harness.py dist/models-context-v1.1.0.so
+      - run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - run: python3 harness.py dist/models-context-v1.1.1.so

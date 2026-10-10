@@ -1,5 +1,25 @@
 # Verification record
 
+## 2026-10-10 — source version 1.1.1
+
+Same Linux amd64 / Debian 12 environment as below. Regression tests were run
+against the earlier parser and failed for the expected literal-quote, hexadecimal
+escape and inline-JSON quoting errors before the corrected parser was tested.
+
+- `go test -v ./...`: thirteen test functions and their table subcases passed.
+- `go vet ./...`, `sh build.sh`, and the real shared-library ctypes harness passed.
+- Python unittest checks confirmed both test scripts reject `-O` and `-OO` before
+  argument processing, library loading, config writes or Docker operations.
+- Isolated CLIProxyAPI v8.0.23 integration loaded plugin version 1.1.1 and returned
+  HTTP 200 with `example-model` / `context_length: 32768`; test container removed.
+- Supported quoted model IDs preserve exact characters; unsupported non-ASCII
+  YAML `\xHH` escapes are rejected instead of becoming invalid UTF-8 byte IDs.
+
+Local verification artifact, not a published release asset:
+`models-context-v1.1.1.so`, 3,220,312 bytes,
+SHA-256 `a87e4e972f84d0dcc1a20e2121ab9fbb4ac15cda0537c62c1b1b24c41db75dff`.
+The compatibility and build-reproducibility limitations below still apply.
+
 ## 2026-10-10 — source version 1.1.0
 
 Environment: Linux amd64, Debian 12/glibc, Go 1.26.5, GCC 12.2.0,

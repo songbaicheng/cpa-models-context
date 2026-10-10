@@ -152,6 +152,95 @@ func TestConfigScalarComments(t *testing.T) {
 	}
 }
 
+func TestQuotedModelIDs(t *testing.T) {
+	for _, tc := range []struct {
+		entry string
+		id    string
+	}{
+		{`'"example-small"': 4096`, `"example-small"`},
+		{`"'example-small'": 4096`, `'example-small'`},
+		{`'example''small': 4096`, `example'small`},
+		{`"example\"small": 4096`, `example"small`},
+		{`"example\x41": 4096`, `exampleA`},
+		{`"example\u0080": 4096`, "example\u0080"},
+		{`"example: small": '4096' # comment: tokens`, `example: small`},
+		{`'example: small': "4096" # comment: tokens`, `example: small`},
+		{`plain: 4096 # comment: tokens`, `plain`},
+	} {
+		t.Run(tc.entry, func(t *testing.T) {
+			got := parseContextLengths("context_lengths:\n  " + tc.entry + "\n")
+			if len(got) != 1 || got[tc.id] != 4096 {
+				t.Fatalf("parsed %v, want exact ID %q", got, tc.id)
+			}
+		})
+	}
+}
+
+func TestMalformedQuotedConfigRejected(t *testing.T) {
+	for _, entry := range []string{
+		`"example\x80": 4096`, // Non-ASCII Go byte escapes differ from YAML Unicode.
+		`"example\xE9": 4096`,
+		`"example\qsmall": 4096`,   // Unsupported YAML escape.
+		`"example\Nsmall": 4096`,   // YAML escape outside our supported subset.
+		`"example\123small": 4096`, // Go octal escapes are not YAML escapes.
+		`'example'small': 4096`,
+		`"example-small: 4096`,
+		`plain: ''4096''`,
+		`plain: ""4096""`,
+	} {
+		if got := parseContextLengths("context_lengths:\n  " + entry + "\n"); len(got) != 0 {
+			t.Errorf("accepted malformed entry %q: %v", entry, got)
+		}
+	}
+}
+
+func TestInlineJSONQuotedModelIDs(t *testing.T) {
+	for _, field := range []string{"context_lengths", "context_lengths_json"} {
+		for _, tc := range []struct {
+			value string
+			id    string
+		}{
+			{`'{"example''small":4096}'`, `example'small`},
+			{`'{"\"example-small\"":4096}'`, `"example-small"`},
+			{`'{"''example-small''":4096}'`, `'example-small'`},
+			{`"{\"example'small\":4096}"`, `example'small`},
+			{`{"example'small":4096}`, `example'small`},
+		} {
+			t.Run(field+"/"+tc.value, func(t *testing.T) {
+				got := parseContextLengths(field + ": " + tc.value + "\n")
+				if len(got) != 1 || got[tc.id] != 4096 {
+					t.Fatalf("parsed %v, want exact ID %q", got, tc.id)
+				}
+			})
+		}
+	}
+}
+
+func TestInlineJSONMalformedOuterQuotesRejected(t *testing.T) {
+	for _, field := range []string{"context_lengths", "context_lengths_json"} {
+		for _, value := range []string{
+			`''{"example-small":4096}''`,
+			`""{"example-small":4096}""`,
+			`'{"example-small":4096}"`,
+			`'{"example-small":4096}`,
+			`{"example-small":4096}'`,
+		} {
+			t.Run(field+"/"+value, func(t *testing.T) {
+				if got := parseContextLengths(field + ": " + value + "\n"); len(got) != 0 {
+					t.Fatalf("accepted malformed scalar %q: %v", value, got)
+				}
+			})
+		}
+	}
+}
+
+func TestInlineJSONEmptyIDsRejected(t *testing.T) {
+	got := parseContextLengths(`context_lengths: '{"":4096,"   ":8192,"valid":16384}'`)
+	if len(got) != 1 || got["valid"] != 16384 {
+		t.Fatalf("accepted empty IDs or lost valid ID: %v", got)
+	}
+}
+
 func TestConfigForms(t *testing.T) {
 	for _, text := range []string{
 		"context_lengths:\n  example-small: 4096\n  'example:large': '8192'\n",

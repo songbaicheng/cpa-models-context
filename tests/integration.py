@@ -7,6 +7,9 @@ import sys
 import time
 import urllib.request
 
+if not __debug__:
+    raise SystemExit("This test requires Python assertions; run without -O/-OO or PYTHONOPTIMIZE.")
+
 root = pathlib.Path(sys.argv[1]).resolve()
 image = sys.argv[2]
 import uuid

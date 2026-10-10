@@ -28,7 +28,7 @@ This number is supplied by the operator, not measured or guaranteed by the plugi
 
 ABI declarations were checked against upstream source commit
 `556f50aa2adf4075303e82ccf6355efc06d3f2df` (v7-module source baseline).
-Version 1.1.0 was built and tested with Go 1.26.5/GCC 12 on Linux amd64
+Version 1.1.1 was built and tested with Go 1.26.5/GCC 12 on Linux amd64
 (Debian 12, glibc), then loaded into an isolated CLIProxyAPI v8.0.23 host
 (commit `d318bcc`). With a fictional provider, `/v1/models` returned the
 configured `context_length: 32768`. This is a focused integration check, not a
@@ -39,7 +39,7 @@ guarantee for all host versions, architectures, providers, or clients.
 ```sh
 go test ./...
 sh build.sh
-python3 harness.py dist/models-context-v1.1.0.so
+python3 harness.py dist/models-context-v1.1.1.so
 ```
 
 `build.sh` builds in the foreground and writes a versioned `.so` plus the generated
@@ -65,6 +65,10 @@ in the checkout, starts a separate container on a random loopback port, checks
 `example-model` reports `context_length: 32768`, and removes the test container.
 It never reads production config or invokes inference. Use a disposable checkout;
 the generated files are ignored by Git. The image is not pulled automatically.
+The host process may still make background network requests (for example, for
+updates or metadata); this integration test is not network-isolated. The plugin
+itself performs no network access. Both Python test scripts require assertions
+and reject `-O`, `-OO`, or `PYTHONOPTIMIZE`.
 
 ## Installation and configuration
 
@@ -96,6 +100,9 @@ The host sends this plugin's configuration block as base64-encoded `config_yaml`
 in the lifecycle JSON envelope. Legacy `ConfigYAML` spellings are accepted.
 Token counts must be positive decimal integers, optionally quoted. **No K/M
 suffixes, hyphenated `context-lengths`, YAML anchors, or general YAML parser.**
+Non-ASCII YAML `\xHH` escapes (above `\x7F`, such as `\x80` or `\xE9`) are
+unsupported and rejected, not decoded as raw bytes. Use literal Unicode or
+`\u`/`\U` escapes instead; ASCII `\xHH` escapes are supported.
 Supported normalized forms are the indented mapping above and inline JSON:
 
 ```yaml

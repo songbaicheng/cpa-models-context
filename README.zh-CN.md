@@ -24,7 +24,7 @@ libc 开发头文件；离线测试需要 Python 3。共享库须匹配宿主架
 
 ABI 声明核对的源码基线为上游提交
 `556f50aa2adf4075303e82ccf6355efc06d3f2df`（v7 模块源码）。
-1.1.0 已使用 Go 1.26.5 / GCC 12 在 Linux amd64（Debian 12，glibc）完成
+1.1.1 已使用 Go 1.26.5 / GCC 12 在 Linux amd64（Debian 12，glibc）完成
 构建与测试，并在隔离的 CLIProxyAPI v8.0.23（提交 `d318bcc`）中加载。
 虚构 provider 的 `/v1/models` 返回了配置的 `context_length: 32768`。
 这是针对模型列表的集成检查，不保证所有宿主版本、架构、provider 或客户端兼容。
@@ -34,7 +34,7 @@ ABI 声明核对的源码基线为上游提交
 ```sh
 go test ./...
 sh build.sh
-python3 harness.py dist/models-context-v1.1.0.so
+python3 harness.py dist/models-context-v1.1.1.so
 ```
 
 脚本前台构建，输出版本化 `.so` 和生成的 C 头文件至 `dist/`，不安装、不重载。
@@ -56,6 +56,9 @@ python3 tests/integration.py "$PWD" YOUR_LOCAL_CPA_IMAGE_ID
 用随机回环端口启动独立容器，检查 `example-model` 返回 `context_length: 32768`，
 并删除测试容器。不读取生产配置，不调用推理，也不自动拉取镜像。
 请使用可丢弃的工作副本；生成文件已被 Git 忽略。
+宿主进程仍可能发出后台网络请求（如更新或元数据请求），此集成测试并未隔离网络。
+插件本身不访问网络。两个 Python 测试脚本都要求启用断言，拒绝 `-O`、`-OO`
+或 `PYTHONOPTIMIZE` 优化执行。
 
 按宿主文档设置插件目录，将产物**重命名为 `models-context.so`**后放入目录，
 确保插件 ID 与配置键一致。旧版本应移出扫描目录，避免重复候选。
@@ -77,7 +80,10 @@ plugins:
 示例 ID 均为虚构，请替换为实际 ID。宿主以生命周期 JSON 中 base64 编码的
 `config_yaml` 传入插件配置块，也接受旧 `ConfigYAML` 拼写。
 值必须是正十进制整数，可加引号。**不支持 K/M 后缀、`context-lengths`
-键名、YAML 锚点或完整 YAML 语法**。支持上面的缩进映射及内联 JSON：
+键名、YAML 锚点或完整 YAML 语法**。
+非 ASCII YAML `\xHH` 转义（大于 `\x7F`，如 `\x80`、`\xE9`）不受支持，
+会被拒绝而非解码为原始字节；请使用 Unicode 字符或 `\u`/`\U` 转义。
+ASCII `\xHH` 转义受支持。支持上面的缩进映射及内联 JSON：
 
 ```yaml
 context_lengths: '{"example-small":32768}'

@@ -11,7 +11,7 @@ gofmt -w main.go main_test.go
 go test ./...
 go vet ./...
 sh build.sh
-python3 harness.py dist/models-context-v1.1.0.so
+python3 harness.py dist/models-context-v1.1.1.so
 ```
 
 Use the version in `main.go` if it changes. Describe exactly which commands and
