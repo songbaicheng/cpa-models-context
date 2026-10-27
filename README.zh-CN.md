@@ -1,5 +1,7 @@
 # CLIProxyAPI 模型上下文窗口插件
 
+<img src="assets/logo.svg" width="104" height="104" alt="Model Context Windows 图标" align="right">
+
 [English](README.md)
 
 通过 C ABI v1 响应拦截接口，为 OpenAI 形状的模型列表补充配置的

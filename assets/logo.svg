@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Model Context Windows">
+  <title>Model Context Windows</title>
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+      <stop offset="0" stop-color="#1b2a4a"/>
+      <stop offset="1" stop-color="#0d1626"/>
+    </linearGradient>
+    <linearGradient id="accent" gradientUnits="userSpaceOnUse" x1="0" y1="138" x2="0" y2="374">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="bar" gradientUnits="userSpaceOnUse" x1="170" y1="0" x2="342" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#bg)"/>
+  <rect x="4" y="4" width="504" height="504" rx="108" ry="108"
+        fill="none" stroke="#3b4d6b" stroke-width="4" opacity="0.55"/>
+
+  <polygon points="156,138 72,138 72,374 156,374 156,336 110,336 110,176 156,176" fill="url(#accent)"/>
+  <polygon points="356,138 440,138 440,374 356,374 356,336 402,336 402,176 356,176" fill="url(#accent)"/>
+
+  <rect x="170" y="187" width="92" height="30" rx="15" fill="#5b7290"/>
+  <rect x="170" y="241" width="130" height="30" rx="15" fill="#8ea6c4"/>
+  <rect x="170" y="295" width="172" height="30" rx="15" fill="url(#bar)"/>
+</svg>

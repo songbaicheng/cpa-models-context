@@ -1,5 +1,7 @@
 # Model Context Windows for CLIProxyAPI
 
+<img src="assets/logo.svg" width="104" height="104" alt="Model Context Windows logo" align="right">
+
 [简体中文](README.zh-CN.md)
 
 A small C ABI v1 response-interceptor plugin that adds configured `context_length`

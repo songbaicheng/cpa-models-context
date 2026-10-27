@@ -6,3 +6,6 @@ __pycache__/
 /coverage.out
 /integration-config.yaml
 /integration-plugins/
+
+# Icon build intermediates
+/assets/__pycache__/
