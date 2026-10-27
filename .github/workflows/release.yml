@@ -13,9 +13,20 @@ permissions:
   contents: write
 
 jobs:
-  linux-amd64:
-    name: linux/amd64
-    runs-on: ubuntu-latest
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners only: building a c-shared library needs a C
+          # toolchain for the target OS, and cross-compiling darwin from Linux
+          # without the SDK is not supported.
+          - { goos: linux,  goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux,  goarch: arm64, runner: ubuntu-24.04-arm }
+          - { goos: darwin, goarch: arm64, runner: macos-14 }
+          - { goos: darwin, goarch: amd64, runner: macos-13 }
     steps:
       - uses: actions/checkout@v4
 
@@ -23,9 +34,6 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: false
-
-      - name: Build shared library
-        run: sh build.sh
 
       - name: Resolve and verify version
         id: v
@@ -42,22 +50,62 @@ jobs:
               exit 1
             }
           fi
-          echo "packaging version ${version}"
+          echo "packaging version ${version} for ${{ matrix.goos }}/${{ matrix.goarch }}"
+
+      - name: Build shared library
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: sh build.sh
 
       # Layout required by CLIProxyAPI's installer: the dynamic library must sit
       # at the zip root, named after the plugin id, and there must be exactly one.
       - name: Package
         shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         run: |
           set -euo pipefail
           version="${{ steps.v.outputs.version }}"
+          case "$GOOS" in linux) ext=so ;; darwin) ext=dylib ;; windows) ext=dll ;; esac
+          zipname="models-context_${version}_${GOOS}_${GOARCH}.zip"
           mkdir -p pkg
-          cp "dist/models-context-v${version}.so" pkg/models-context.so
-          ( cd pkg && zip -q -X "../models-context_${version}_linux_amd64.zip" models-context.so )
+          cp "dist/models-context-v${version}.${ext}" "pkg/models-context.${ext}"
+          ( cd pkg && zip -q -X "../${zipname}" "models-context.${ext}" )
           rm -rf pkg
-          sha256sum "models-context_${version}_linux_amd64.zip" > checksums.txt
-          echo "--- zip contents ---"
-          python3 -c "import zipfile,sys; print([i.filename for i in zipfile.ZipFile(sys.argv[1]).infolist()])" "models-context_${version}_linux_amd64.zip"
+          echo "--- ${zipname} contents ---"
+          python3 -c "import zipfile,sys; print([i.filename for i in zipfile.ZipFile(sys.argv[1]).infolist()])" "${zipname}"
+          echo "$zipname" > .artifact-name
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.goos }}-${{ matrix.goarch }}
+          path: models-context_*.zip
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd artifacts
+          echo "--- collected ---"
+          ls -l
+          count=$(ls -1 models-context_*.zip | wc -l)
+          [ "$count" -ge 1 ] || { echo "no zips collected" >&2; exit 1; }
+          # sha256sum format, one line per archive, as the store README requires.
+          sha256sum models-context_*.zip | sort -k2 > checksums.txt
           echo "--- checksums.txt ---"
           cat checksums.txt
 
@@ -65,7 +113,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            models-context_*.zip
-            checksums.txt
+            artifacts/models-context_*.zip
+            artifacts/checksums.txt
           fail_on_unmatched_files: true
           generate_release_notes: true

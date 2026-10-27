@@ -19,5 +19,50 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: sh build.sh
-      - run: python3 -m unittest discover -s tests -p 'test_*.py' -v
-      - run: python3 harness.py dist/models-context-v1.1.1.so
+      # Resolve the built path instead of hardcoding a version, so bumping
+      # pluginVersion cannot silently break CI.
+      - name: Integration tests
+        run: |
+          set -eu
+          so=$(ls dist/models-context-v*.so | head -1)
+          echo "testing $so"
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 harness.py "$so"
+
+  # The plugin links against libc, so each platform must be compiled and
+  # smoke-tested natively. This job proves the release matrix can build before
+  # a tag is pushed.
+  cross:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,  goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux,  goarch: arm64, runner: ubuntu-24.04-arm }
+          - { goos: darwin, goarch: arm64, runner: macos-14 }
+          - { goos: darwin, goarch: amd64, runner: macos-13 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: sh build.sh
+      - name: Verify artifact
+        run: |
+          set -eu
+          ls -l dist/
+          case "${{ matrix.goos }}" in
+            linux) ext=so ;;
+            darwin) ext=dylib ;;
+            *) ext=dll ;;
+          esac
+          f=$(ls dist/*."$ext" | head -1)
+          [ -s "$f" ] || { echo "empty artifact $f" >&2; exit 1; }
+          echo "built $f ($(wc -c < "$f") bytes)"
