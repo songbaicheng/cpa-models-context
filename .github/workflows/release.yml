@@ -1,0 +1,71 @@
+name: release
+
+# Tag-driven release. GitHub Actions publishes the release with its own
+# GITHUB_TOKEN, so no local PAT is required. Publishing a tag is all it takes;
+# the plugin store reads this repository's latest release.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-amd64:
+    name: linux/amd64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+
+      - name: Build shared library
+        run: sh build.sh
+
+      - name: Resolve and verify version
+        id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*pluginVersion = "\([^"]*\)".*/\1/p' main.go | head -1)
+          [ -n "$version" ] || { echo "cannot determine pluginVersion" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            expected="v${version}"
+            [ "${GITHUB_REF_NAME}" = "$expected" ] || {
+              echo "tag ${GITHUB_REF_NAME} does not match pluginVersion ${version} (expected ${expected})" >&2
+              exit 1
+            }
+          fi
+          echo "packaging version ${version}"
+
+      # Layout required by CLIProxyAPI's installer: the dynamic library must sit
+      # at the zip root, named after the plugin id, and there must be exactly one.
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.v.outputs.version }}"
+          mkdir -p pkg
+          cp "dist/models-context-v${version}.so" pkg/models-context.so
+          ( cd pkg && zip -q -X "../models-context_${version}_linux_amd64.zip" models-context.so )
+          rm -rf pkg
+          sha256sum "models-context_${version}_linux_amd64.zip" > checksums.txt
+          echo "--- zip contents ---"
+          python3 -c "import zipfile,sys; print([i.filename for i in zipfile.ZipFile(sys.argv[1]).infolist()])" "models-context_${version}_linux_amd64.zip"
+          echo "--- checksums.txt ---"
+          cat checksums.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            models-context_*.zip
+            checksums.txt
+          fail_on_unmatched_files: true
+          generate_release_notes: true
