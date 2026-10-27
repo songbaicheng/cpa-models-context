@@ -30,11 +30,26 @@ This number is supplied by the operator, not measured or guaranteed by the plugi
 
 ABI declarations were checked against upstream source commit
 `556f50aa2adf4075303e82ccf6355efc06d3f2df` (v7-module source baseline).
-Version 1.1.1 was built and tested with Go 1.26.5/GCC 12 on Linux amd64
-(Debian 12, glibc), then loaded into an isolated CLIProxyAPI v8.0.23 host
-(commit `d318bcc`). With a fictional provider, `/v1/models` returned the
-configured `context_length: 32768`. This is a focused integration check, not a
-guarantee for all host versions, architectures, providers, or clients.
+Version 1.1.1 ships as prebuilt shared libraries for **Linux amd64 and Linux
+arm64**. The amd64 build was loaded into an isolated CLIProxyAPI v8.0.23 host
+(commit `d318bcc`) and into a CLIProxyAPI v8.0.44 host; with a fictional provider,
+`/v1/models` returned the configured `context_length: 32768`. The arm64 build was
+verified on real aarch64 hardware by resolving all four plugin ABI symbols via
+`dlopen`/`dlsym` (no arm64 CLIProxyAPI host was available to load it end to end).
+This is a focused integration check, not a guarantee for all host versions,
+architectures, providers, or clients.
+
+## Prebuilt artifacts
+
+| Platform | Archive |
+| --- | --- |
+| Linux amd64 | `models-context_<version>_linux_amd64.zip` |
+| Linux arm64 | `models-context_<version>_linux_arm64.zip` |
+
+Each archive holds a single `models-context.so` at the zip root, and
+`checksums.txt` carries the sha256 for both. macOS is not shipped: every
+CLIProxyAPI host that loads a C ABI plugin here is Linux. macOS users can build
+from source with the steps below (`build.sh` picks `.dylib` automatically).
 
 ## Build and test
 

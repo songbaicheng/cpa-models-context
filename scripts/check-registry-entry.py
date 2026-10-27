@@ -129,50 +129,60 @@ def main() -> int:
     assert valid_version(version), f"invalid release tag {version!r} (need v<dotted numeric>)"
     print(f"[2/6] latest release: version={version} (via {source})")
 
-    # 3. asset names match what the installer computes
-    archive_name = f"{entry['id']}_{version}_{goos}_{goarch}.zip"
+    # 3. asset names match what the installer computes, for every platform
+    #    the plugin claims to support.
+    platforms = [("linux", "amd64"), ("linux", "arm64")]
+    archive_names = {f"{entry['id']}_{version}_{g}_{a}.zip" for g, a in platforms}
     if api_error is not None:
-        assets[archive_name] = (
-            f"https://github.com/{owner}/{repo}/releases/latest/download/{archive_name}"
-        )
-    assert archive_name in assets, (
-        f"release asset {archive_name} not found; has {sorted(assets)}"
-    )
+        for name in archive_names:
+            assets[name] = (
+                f"https://github.com/{owner}/{repo}/releases/latest/download/{name}"
+            )
+    missing = archive_names - set(assets)
+    assert not missing, f"release assets not found: {sorted(missing)}; has {sorted(assets)}"
     assert "checksums.txt" in assets, "release asset checksums.txt not found"
-    print(f"[3/6] assets present: {archive_name}, checksums.txt")
+    print(f"[3/6] assets present: {', '.join(sorted(archive_names))}, checksums.txt")
 
-    # 4. checksum verification
-    try:
-        archive = get(assets[archive_name])
-    except urllib.error.HTTPError as exc:
-        raise AssertionError(
-            f"release asset {archive_name} not downloadable (HTTP {exc.code})"
-        ) from exc
+    # 4. checksum verification for every archive
     sums = get(assets["checksums.txt"]).decode("utf-8", "replace")
-    expected = None
+    listed = {}
     for line in sums.splitlines():
         parts = line.split()
-        if len(parts) >= 2 and parts[-1].lstrip("*") == archive_name:
-            expected = parts[0].lower()
-    assert expected is not None, f"{archive_name} missing from checksums.txt"
-    actual = hashlib.sha256(archive).hexdigest()
-    assert actual == expected, f"sha256 mismatch: file={actual} checksums.txt={expected}"
-    print(f"[4/6] sha256 verified: {actual[:16]}… ({len(archive)} bytes)")
+        if len(parts) >= 2:
+            listed[parts[-1].lstrip("*")] = parts[0].lower()
+    for name in sorted(archive_names):
+        assert name in listed, f"{name} missing from checksums.txt"
+    archives = {}
+    for name in sorted(archive_names):
+        try:
+            data = get(assets[name])
+        except urllib.error.HTTPError as exc:
+            raise AssertionError(f"release asset {name} not downloadable (HTTP {exc.code})") from exc
+        actual = hashlib.sha256(data).hexdigest()
+        assert actual == listed[name], f"sha256 mismatch for {name}: {actual} != {listed[name]}"
+        archives[name] = data
+        print(f"[4/6] {name}: sha256 {actual[:16]}… OK ({len(data)} bytes)")
 
-    # 5. zip layout: single library at root, correctly named, really a shared lib
-    zf = zipfile.ZipFile(io.BytesIO(archive))
-    libs = [i for i in zf.infolist() if not i.is_dir() and i.filename.endswith((".so", ".dylib", ".dll"))]
-    target = f"{entry['id']}.so"
-    versioned = f"{entry['id']}-v{version}.so"
-    assert len(libs) == 1, f"zip must hold exactly one dynamic library, found {[i.filename for i in libs]}"
-    name = libs[0].filename
-    assert "/" not in name, f"dynamic library must be at zip root, got {name!r}"
-    assert name in (target, versioned), f"library filename must be {target} or {versioned}, got {name!r}"
-    head = zf.read(name)[:20]
-    assert head[:4] == b"\x7fELF", "library is not an ELF binary"
-    machine = {0x3E: "x86-64", 0xB7: "aarch64"}.get(int.from_bytes(head[18:20], "little"), "?")
-    assert machine == "x86-64", f"library arch is {machine}, expected x86-64 for {goos}/{goarch}"
-    print(f"[5/6] zip layout ok: {name} ({libs[0].file_size} bytes, ELF64 {machine})")
+    # 5. zip layout: single library at root, correctly named, arch matches the
+    #    platform the archive claims to target
+    expected_machine = {("linux", "amd64"): "x86-64", ("linux", "arm64"): "aarch64"}
+    for (gos, goarch), name in zip(platforms, sorted(archive_names)):
+        zf = zipfile.ZipFile(io.BytesIO(archives[name]))
+        libs = [i for i in zf.infolist()
+                if not i.is_dir() and i.filename.endswith((".so", ".dylib", ".dll"))]
+        target = f"{entry['id']}.so"
+        versioned = f"{entry['id']}-v{version}.so"
+        assert len(libs) == 1, f"{name}: expected exactly one dynamic library, found {[i.filename for i in libs]}"
+        libname = libs[0].filename
+        assert "/" not in libname, f"{name}: library must be at zip root, got {libname!r}"
+        assert libname in (target, versioned), \
+            f"{name}: library filename must be {target} or {versioned}, got {libname!r}"
+        head = zf.read(libname)[:20]
+        assert head[:4] == b"\x7fELF", f"{name}: library is not an ELF binary"
+        machine = {0x3E: "x86-64", 0xB7: "aarch64"}.get(int.from_bytes(head[18:20], "little"), "?")
+        want = expected_machine[(gos, goarch)]
+        assert machine == want, f"{name}: arch is {machine}, expected {want}"
+        print(f"[5/6] zip layout ok: {name} -> {libname} ({libs[0].file_size} bytes, ELF64 {machine})")
 
     # 6. logo asset, if declared
     logo = entry.get("logo")

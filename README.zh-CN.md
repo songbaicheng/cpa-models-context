@@ -26,10 +26,23 @@ libc 开发头文件；离线测试需要 Python 3。共享库须匹配宿主架
 
 ABI 声明核对的源码基线为上游提交
 `556f50aa2adf4075303e82ccf6355efc06d3f2df`（v7 模块源码）。
-1.1.1 已使用 Go 1.26.5 / GCC 12 在 Linux amd64（Debian 12，glibc）完成
-构建与测试，并在隔离的 CLIProxyAPI v8.0.23（提交 `d318bcc`）中加载。
-虚构 provider 的 `/v1/models` 返回了配置的 `context_length: 32768`。
-这是针对模型列表的集成检查，不保证所有宿主版本、架构、provider 或客户端兼容。
+1.1.1 提供 **Linux amd64 与 Linux arm64** 两个预编译共享库。amd64 版已在隔离的
+CLIProxyAPI v8.0.23（提交 `d318bcc`）与 v8.0.44 宿主中加载，虚构 provider 的
+`/v1/models` 返回了配置的 `context_length: 32768`。arm64 版已在真实 aarch64 机器上
+用 `dlopen`/`dlsym` 验证四个插件 ABI 符号均可解析（当时没有 arm64 的 CLIProxyAPI
+宿主可做端到端加载）。这是针对模型列表的集成检查，不保证所有宿主版本、架构、
+provider 或客户端兼容。
+
+## 预编译产物
+
+| 平台 | 压缩包 |
+| --- | --- |
+| Linux amd64 | `models-context_<version>_linux_amd64.zip` |
+| Linux arm64 | `models-context_<version>_linux_arm64.zip` |
+
+每个压缩包根目录只有一个 `models-context.so`，`checksums.txt` 提供两者的 sha256。
+不提供 macOS 产物：实际加载本插件的 CLIProxyAPI 宿主都是 Linux；macOS 用户可用下方
+步骤从源码构建（`build.sh` 会自动选择 `.dylib` 后缀）。
 
 ## 构建、测试与安装
 
