@@ -39,10 +39,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-13 (the last free x64 macOS image) has been retired, and
+          # macOS 15/26 x64 runners are paid -large only, so darwin/amd64 is
+          # intentionally not built. macOS users on Intel can build from source.
           - { goos: linux,  goarch: amd64, runner: ubuntu-latest }
           - { goos: linux,  goarch: arm64, runner: ubuntu-24.04-arm }
-          - { goos: darwin, goarch: arm64, runner: macos-14 }
-          - { goos: darwin, goarch: amd64, runner: macos-13 }
+          - { goos: darwin, goarch: arm64, runner: macos-15 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

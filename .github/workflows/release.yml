@@ -23,10 +23,12 @@ jobs:
           # Native runners only: building a c-shared library needs a C
           # toolchain for the target OS, and cross-compiling darwin from Linux
           # without the SDK is not supported.
+          # macos-13 (the last free x64 macOS image) has been retired, and
+          # macOS 15/26 x64 runners are paid -large only, so darwin/amd64 is
+          # intentionally not built. macOS users on Intel can build from source.
           - { goos: linux,  goarch: amd64, runner: ubuntu-latest }
           - { goos: linux,  goarch: arm64, runner: ubuntu-24.04-arm }
-          - { goos: darwin, goarch: arm64, runner: macos-14 }
-          - { goos: darwin, goarch: amd64, runner: macos-13 }
+          - { goos: darwin, goarch: arm64, runner: macos-15 }
     steps:
       - uses: actions/checkout@v4
 
