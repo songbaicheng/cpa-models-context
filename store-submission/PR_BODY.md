@@ -1,4 +1,4 @@
-Add Model Context Windows plugin (`models-context`) to the registry
+Add Model Context Windows plugin (`models-context`)
 
 ## Plugin
 
@@ -12,7 +12,7 @@ Add Model Context Windows plugin (`models-context`) to the registry
 
 ## Capability added
 
-A C ABI v1 **response-interceptor** plugin (`capabilities: response_intercept_after`)
+A C ABI v1 **response-interceptor** plugin (`capabilities: response_interceptor`)
 that appends operator-configured `context_length` values to OpenAI-shaped
 `GET /v1/models` responses, so clients that size their context budget from the model
 list get the real window instead of a missing field:
@@ -30,13 +30,14 @@ Scope, deliberately narrow:
   model-list payload is rewritten (unknown top-level fields and JSON integer precision
   are preserved).
 
-## Evidence that the release assets exist
+## Evidence that the required assets exist
 
-Latest release `v1.1.1`, published by the repository's own tag-triggered workflow:
+Release `v1.1.1` ships both Linux architectures with a checksum file:
 
 ```
-checksums.txt                              103 B
-models-context_1.1.1_linux_amd64.zip   1,767,026 B
+checksums.txt                                206 B
+models-context_1.1.1_linux_amd64.zip   1,767,022 B
+models-context_1.1.1_linux_arm64.zip   1,618,690 B
 ```
 
 I re-implemented the installer's validation chain from `internal/pluginstore` and ran it
@@ -45,24 +46,41 @@ against the live release ([`scripts/check-registry-entry.py`](https://github.com
 ```
 [1/6] registry entry valid: models-context (songbaicheng/cpa-models-context)
 [2/6] latest release: version=1.1.1
-[3/6] assets present: models-context_1.1.1_linux_amd64.zip, checksums.txt
-[4/6] sha256 verified: a3cfe527f309b8ca… (1767026 bytes)
-[5/6] zip layout ok: models-context.so (3222000 bytes, ELF64 x86-64)
+[3/6] assets present: models-context_1.1.1_linux_amd64.zip,
+      models-context_1.1.1_linux_arm64.zip, checksums.txt
+[4/6] models-context_1.1.1_linux_amd64.zip: sha256 d3ccd742bcdd31cd… OK (1767022 bytes)
+[4/6] models-context_1.1.1_linux_arm64.zip: sha256 e885897be6cad3a3… OK (1618690 bytes)
+[5/6] zip layout ok: ..._linux_amd64.zip -> models-context.so (3222000 bytes, ELF64 x86-64)
+[5/6] zip layout ok: ..._linux_arm64.zip -> models-context.so (3053984 bytes, ELF64 aarch64)
 [6/6] logo ok: SVG (1468 bytes)
 
 OK — models-context v1.1.1 is installable via the plugin store.
 ```
 
-That covers: `ArchiveName()` asset matching, sha256 against `checksums.txt`, exactly one
-dynamic library at the zip root named `models-context.so`, and an ELF64 x86-64 header
-probe. The archive was downloaded from the published release, not from a local build.
+That covers `ArchiveName()` asset matching (with `id` = `models-context`, so
+`models-context_<version>_linux_<arch>.zip`), sha256 against `checksums.txt`, exactly one
+dynamic library at the zip root named `models-context.so`, and the ELF machine type
+matching each archive's claimed architecture. Archives were downloaded from the published
+release, not from a local build.
+
+Runtime checks actually performed:
+
+- **linux/amd64**: loaded and registered in an isolated CLIProxyAPI `v8.0.44` host
+  (`plugin registered plugin_id=models-context ... version=1.1.1`), and in a `v8.0.23`
+  host where a fictional provider's `/v1/models` returned the configured
+  `context_length: 32768`. The shipped `.so` requires at most `GLIBC_2.34`; the hosts run
+  glibc 2.39.
+- **linux/arm64**: all four ABI symbols (`cliproxy_plugin_init`, `cliproxyPluginCall`,
+  `cliproxyPluginFree`, `cliproxyPluginShutdown`) resolve via `dlopen`/`dlsym` on real
+  aarch64 hardware (glibc 2.39, requires ≤ `GLIBC_2.34`). No arm64 CLIProxyAPI host was
+  available to load it end to end, and the README says so rather than implying otherwise.
 
 ## Platform coverage
 
-`linux/amd64` only for now. Some registry entries already ship a single platform
-(`cpa-apply-patch`, `opencode-go-pool`, `cpa-session-archive`, `cliproxyapi-copilot`), but
-if a specific platform matrix is expected for new entries, tell me which ones and I will
-publish them before this is merged.
+Linux amd64 + Linux arm64. No macOS or Windows build: a C ABI plugin is only loadable by
+the host that matches it, and macOS/Windows CLIProxyAPI hosts are not what this targets.
+macOS users can build from source (documented in the README). If a wider matrix is
+required for registry entries, tell me which targets and I will add them before merge.
 
 ## Registry diff
 
@@ -88,9 +106,10 @@ other entries touched and no reformatting of neighbours:
 `repository` is exactly `https://github.com/{owner}/{repo}`, and ids are unique
 (149 → 150).
 
-## CI on the plugin repository
+## CI
 
-`gofmt` check, `go test ./...`, `go vet ./...`, `sh build.sh`, Python integration tests,
-and a C ABI harness all green on Go 1.26.x / linux-amd64. A tag push whose name does not
-match `pluginVersion` fails the release workflow, so assets cannot silently drift from
-the declared version.
+On the plugin repository: `gofmt` check, `go test ./...`, `go vet ./...`, `sh build.sh`,
+Python integration tests, a C ABI harness, plus a matrix job that compiles the shared
+library natively on `linux/amd64` and `linux/arm64`. A tag push whose name does not match
+`pluginVersion` fails the release workflow, so the published assets cannot silently drift
+from the declared version.
